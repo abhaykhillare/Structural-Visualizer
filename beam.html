@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Beam Analysis & Design Dashboard</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Input Styling */
+        input[type="number"], select {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 0.875rem;
+            width: 100%;
+            transition: all 0.2s;
+            font-family: 'ui-monospace', 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+        }
+        input[type="number"]:focus, select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            background-color: #ffffff;
+        }
+
+        /* Tabs */
+        .tab-btn {
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #64748b;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .tab-btn.active {
+            color: #2563eb;
+            border-bottom-color: #2563eb;
+            background-color: #eff6ff;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Math Block */
+        .math-block {
+            background: #f8fafc;
+            border-left: 3px solid #3b82f6;
+            padding: 12px 16px;
+            margin: 8px 0;
+            font-family: "Cambria Math", serif;
+            font-size: 1.05rem;
+            overflow-x: auto;
+            border-radius: 0 4px 4px 0;
+        }
+        .step-title {
+            color: #1e293b;
+            font-weight: 700;
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 0.25rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        th, td {
+            border: 1px solid #e2e8f0;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f1f5f9;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+
+        .load-card {
+            border-left: 3px solid #64748b;
+        }
+        .load-card.point {
+            border-left-color: #ef4444;
+        }
+        .load-card.udl {
+            border-left-color: #f59e0b;
+        }
+        .load-card.uvl {
+            border-left-color: #8b5cf6;
+        }
+        .load-card.moment {
+            border-left-color: #0ea5e9;
+        }
+
+@media print {
+            .no-print {
+                display: none !important;
+            }
+            body {
+                overflow: auto !important;
+                height: auto !important;
+                background: white !important;
+            }
+            .print-container {
+                display: block !important;
+                overflow: visible !important;
+            }
+            .shadow-sm {
+                box-shadow: none !important;
+                border: 1px solid #e2e8f0;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 h-screen flex flex-col font-sans overflow-hidden print-container">
+
+    <header class="bg-slate-900 text-white px-6 py-3 flex justify-between items-center shrink-0 no-print">
+        <div class="flex items-center gap-3">
+            <i class="fa-solid fa-ruler-horizontal text-blue-400 text-xl"></i>
+            <h1 class="text-lg font-bold tracking-wide">Beam Engine Pro</h1>
+            <span class="bg-blue-600/30 text-blue-300 border border-blue-500 text-[10px] px-2 py-0.5 rounded font-medium uppercase tracking-wider ml-2">Structural Analysis</span>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="app.loadPreset('ss')" class="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded transition">Simply Supported</button>
+            <button onclick="app.loadPreset('cantilever')" class="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded transition">Cantilever</button>
+            <button onclick="app.loadPreset('fixed')" class="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded transition">Fixed-Fixed</button>
+            <button onclick="window.print()" class="text-xs bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded transition shadow ml-2"><i class="fa-solid fa-print mr-1"></i> Report</button>
+        </div>
+    </header>
+
+    <div class="flex-1 flex overflow-hidden print-container">
+
+        <div class="w-80 bg-white border-r border-slate-200 flex flex-col shadow-sm z-10 shrink-0 no-print overflow-y-auto">
+            <div class="p-5 space-y-6">
+
+                <section>
+                    <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2"><i class="fa-solid fa-arrows-left-right"></i> Beam Setup</h2>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="text-xs text-slate-600 font-medium block mb-1">Total Length (L) [m]</label>
+                            <input type="number" id="inp-l" value="10" step="0.5" min="1">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-600 font-medium block mb-1">Boundary Conditions</label>
+                            <select id="inp-support">
+                                <option value="SS" selected>Simply Supported (Pinned-Roller)</option>
+                                <option value="Cantilever">Cantilever (Fixed-Free)</option>
+                                <option value="Fixed">Fixed - Fixed</option>
+                            </select>
+                        </div>
+                    </div>
+                </section>
+
+                <hr class="border-slate-100">
+
+                <section>
+                    <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2"><i class="fa-solid fa-cube"></i> Section Properties</h2>
+                    <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                            <label class="text-xs text-slate-600 font-medium block mb-1">Width (b) [mm]</label>
+                            <input type="number" id="inp-b" value="300" step="10" min="50">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-600 font-medium block mb-1">Depth (d) [mm]</label>
+                            <input type="number" id="inp-d" value="500" step="10" min="50">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-600 font-medium block mb-1">Young's Modulus (E) [GPa]</label>
+                        <input type="number" id="inp-e" value="200" step="1" min="1" title="Default 200 GPa for Steel. Use 25 for Concrete.">
+                        <div class="text-[9px] text-slate-400 mt-1 italic">
+                            I = <span id="lbl-inertia">3.12e9</span> mm⁴
+                        </div>
+                    </div>
+                </section>
+
+                <hr class="border-slate-100">
+
+                <section>
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2"><i class="fa-solid fa-weight-hanging"></i> Applied Loads</h2>
+                        <select id="add-load-type" onchange="if(this.value) { app.addLoad(this.value); this.value=''; }" class="w-24 text-xs py-1 px-2">
+                            <option value="">+ Add...</option>
+                            <option value="point">Point Load</option>
+                            <option value="udl">UDL</option>
+                            <option value="uvl">UVL</option>
+                            <option value="moment">Moment</option>
+                        </select>
+                    </div>
+
+                    <div id="loads-container" class="space-y-3">
+                    </div>
+                </section>
+
+            </div>
+        </div>
+
+        <div class="flex-1 flex flex-col overflow-y-auto bg-slate-50 print-container relative">
+
+            <div class="bg-white p-4 border-b border-slate-200 grid grid-cols-5 gap-4 sticky top-0 z-20 shadow-sm shrink-0">
+                <div class="flex flex-col justify-center border-r border-slate-100 pr-2">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Reactions (R<sub>A</sub>, R<sub>B</sub>)</span>
+                    <div class="text-xl font-light text-slate-800">
+                        <span id="res-ra">0.0</span> / <span id="res-rb">0.0</span> <span class="text-xs text-slate-500 font-medium">kN</span>
+                    </div>
+                </div>
+
+                <div class="flex flex-col justify-center border-r border-slate-100 px-2">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Absolute Max Shear</span>
+                    <div class="text-2xl font-light text-blue-600">
+                        <span id="res-vmax">0.0</span> <span class="text-xs text-blue-400 font-medium">kN</span>
+                    </div>
+                </div>
+
+                <div class="flex flex-col justify-center border-r border-slate-100 px-2">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Absolute Max Moment</span>
+                    <div class="text-2xl font-light text-emerald-600">
+                        <span id="res-mmax">0.0</span> <span class="text-xs text-emerald-400 font-medium">kNm</span>
+                    </div>
+                </div>
+
+                <div class="flex flex-col justify-center border-r border-slate-100 px-2">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Max Deflection</span>
+                    <div class="text-2xl font-light text-amber-600">
+                        <span id="res-dmax">0.0</span> <span class="text-xs text-amber-400 font-medium">mm</span>
+                    </div>
+                    <span class="text-[10px] text-slate-500 mt-0.5">Allowable: <span id="res-dlimit"></span> mm</span>
+                </div>
+
+                <div class="flex flex-col justify-center items-center rounded-lg" id="status-card">
+                    <span class="text-[10px] font-bold uppercase tracking-wider mb-1 text-white opacity-80">Design Status</span>
+                    <div class="text-xl font-bold text-white flex items-center gap-2" id="res-status">
+                        <i class="fa-solid fa-circle-check"></i> SAFE
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-6 flex-1 flex flex-col gap-6 max-w-[1400px] mx-auto w-full">
+
+                <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-4 flex flex-col shrink-0">
+                    <h3 class="text-xs font-bold text-slate-600 uppercase tracking-wider text-center mb-2">Beam Layout & Loading System</h3>
+                    <div id="viz-beam" class="w-full flex justify-center items-center h-40 overflow-hidden"></div>
+                </div>
+
+                <div class="bg-white rounded-lg border border-slate-200 shadow-sm flex-1 flex flex-col min-h-[600px] print-container">
+
+                    <div class="flex border-b border-slate-200 bg-slate-50 rounded-t-lg no-print">
+                        <button class="tab-btn active" onclick="app.switchTab('charts')"><i class="fa-solid fa-chart-area mr-2"></i>Analysis Diagrams</button>
+                        <button class="tab-btn" onclick="app.switchTab('tables')"><i class="fa-solid fa-table mr-2"></i>Data Tables</button>
+                        <button class="tab-btn" onclick="app.switchTab('steps')"><i class="fa-solid fa-square-root-variable mr-2"></i>Calculation Report</button>
+                    </div>
+
+                    <div id="tab-charts" class="tab-content active p-6 flex-1">
+                        <div class="grid grid-cols-1 gap-6">
+                            <div class="h-56 border border-slate-100 rounded p-2">
+                                <canvas id="chart-sfd"></canvas>
+                            </div>
+                            <div class="h-56 border border-slate-100 rounded p-2">
+                                <canvas id="chart-bmd"></canvas>
+                            </div>
+                            <div class="h-56 border border-slate-100 rounded p-2">
+                                <canvas id="chart-def"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="tab-tables" class="tab-content p-6 flex-1 print-container">
+                        <div class="h-[700px] overflow-y-auto border border-slate-200 rounded custom-scroll">
+                            <table id="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Distance x [m]</th>
+                                        <th>Shear V [kN]</th>
+                                        <th>Moment M [kNm]</th>
+                                        <th>Slope &theta; [rad]</th>
+                                        <th>Deflection &Delta; [mm]</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div id="tab-steps" class="tab-content p-8 flex-1 print-container">
+                        <div id="calc-steps" class="text-slate-700 space-y-2 text-sm leading-relaxed max-w-4xl mx-auto">
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const app = {
+            state: {
+                in: {
+                    L: 10,
+                    support: 'SS',
+                    b: 300,
+                    d: 500,
+                    E: 200
+                },
+                loads: [],
+                out: {},
+                nodes: [],
+                charts: {
+                    sfd: null,
+                    bmd: null,
+                    def: null
+                }
+            },
+
+            init() {
+                this.bindEvents();
+                this.loadPreset('ss'); // default
+            },
+
+            bindEvents() {
+                const inputs = ['inp-l',
+                    'inp-b',
+                    'inp-d',
+                    'inp-e'];
+                inputs.forEach(id => document.getElementById(id).addEventListener('input', () => this.update()));
+                document.getElementById('inp-support').addEventListener('change', () => this.update());
+
+                window.addEventListener('resize', () => {
+                    if (this.resizeTimer) clearTimeout(this.resizeTimer);
+                    this.resizeTimer = setTimeout(() => this.renderBeamLayout(), 100);
+                });
+            },
+
+            generateId() {
+                return Math.random().toString(36).substr(2,
+                    9);
+            },
+
+            addLoad(type) {
+                const L = this.state.in.L;
+                let load = {
+                    id: this.generateId(), type: type
+                };
+                if (type === 'point') {
+                    load.mag = 50; load.pos = L/2;
+                } else if (type === 'udl') {
+                    load.mag = 20; load.start = 0; load.end = L;
+                } else if (type === 'uvl') {
+                    load.mag1 = 0; load.mag2 = 30; load.start = 0; load.end = L;
+                } else if (type === 'moment') {
+                    load.mag = 100; load.pos = L/2;
+                }
+                this.state.loads.push(load);
+                this.update();
+            },
+
+            removeLoad(id) {
+                this.state.loads = this.state.loads.filter(l => l.id !== id);
+                this.update();
+            },
+
+            updateLoad(id, field, val) {
+                const l = this.state.loads.find(l => l.id === id);
+                if (l) {
+                    l[field] = parseFloat(val) || 0;
+                    if (['pos', 'start', 'end'].includes(field)) {
+                        l[field] = Math.max(0, Math.min(this.state.in.L, l[field]));
+                    }
+                    if (l.type === 'udl' || l.type === 'uvl') {
+                        if (field === 'start' && l.start > l.end) l.end = l.start;
+                        if (field === 'end' && l.end < l.start) l.start = l.end;
+                    }
+                    this.update();
+                }
+            },
+
+            loadPreset(type) {
+                this.state.loads = [];
+                document.getElementById('inp-l').value = 10;
+                document.getElementById('inp-b').value = 300;
+                document.getElementById('inp-d').value = 500;
+                document.getElementById('inp-e').value = 200; // Steel
+
+                if (type === 'ss') {
+                    document.getElementById('inp-support').value = 'SS';
+                    this.state.loads.push({
+                        id: this.generateId(), type: 'udl', mag: 15, start: 0, end: 10
+                    });
+                    this.state.loads.push({
+                        id: this.generateId(), type: 'point', mag: 80, pos: 5
+                    });
+                } else if (type === 'cantilever') {
+                    document.getElementById('inp-support').value = 'Cantilever';
+                    this.state.loads.push({
+                        id: this.generateId(), type: 'uvl', mag1: 20, mag2: 0, start: 0, end: 10
+                    });
+                    this.state.loads.push({
+                        id: this.generateId(), type: 'point', mag: 50, pos: 10
+                    });
+                } else if (type === 'fixed') {
+                    document.getElementById('inp-support').value = 'Fixed';
+                    this.state.loads.push({
+                        id: this.generateId(), type: 'udl', mag: 25, start: 2, end: 8
+                    });
+                    this.state.loads.push({
+                        id: this.generateId(), type: 'moment', mag: 120, pos: 5
+                    });
+                }
+                this.update();
+            },
+
+            renderLoadUI() {
+                const container = document.getElementById('loads-container');
+                container.innerHTML = '';
+                if (this.state.loads.length === 0) {
+                    container.innerHTML = '<div class="text-[10px] text-slate-400 italic p-3 border border-dashed rounded text-center">No external loads applied.</div>';
+                    return;
+                }
+
+                this.state.loads.forEach(l => {
+                    let fields = '';
+                    if (l.type === 'point') {
+                        fields = `
+                        <div class="flex gap-2 mt-2">
+                        <div class="flex-1"><label class="text-[9px] text-slate-500 uppercase">Mag (kN) &darr;</label><input type="number" value="${l.mag}" onchange="app.updateLoad('${l.id}','mag',this.value)"></div>
+                        <div class="flex-1"><label class="text-[9px] text-slate-500 uppercase">Pos (m)</label><input type="number" step="0.1" value="${l.pos}" onchange="app.updateLoad('${l.id}','pos',this.value)"></div>
+                        </div>`;
+                    } else if (l.type === 'udl') {
+                        fields = `
+                        <div class="flex gap-2 mt-2">
+                        <div class="w-1/3"><label class="text-[9px] text-slate-500 uppercase">w (kN/m)</label><input type="number" value="${l.mag}" onchange="app.updateLoad('${l.id}','mag',this.value)"></div>
+                        <div class="w-1/3"><label class="text-[9px] text-slate-500 uppercase">Start (m)</label><input type="number" step="0.1" value="${l.start}" onchange="app.updateLoad('${l.id}','start',this.value)"></div>
+                        <div class="w-1/3"><label class="text-[9px] text-slate-500 uppercase">End (m)</label><input type="number" step="0.1" value="${l.end}" onchange="app.updateLoad('${l.id}','end',this.value)"></div>
+                        </div>`;
+                    } else if (l.type === 'uvl') {
+                        fields = `
+                        <div class="flex gap-2 mt-2">
+                        <div class="w-1/4"><label class="text-[9px] text-slate-500 uppercase">w1 (kN/m)</label><input type="number" value="${l.mag1}" onchange="app.updateLoad('${l.id}','mag1',this.value)"></div>
+                        <div class="w-1/4"><label class="text-[9px] text-slate-500 uppercase">w2 (kN/m)</label><input type="number" value="${l.mag2}" onchange="app.updateLoad('${l.id}','mag2',this.value)"></div>
+                        <div class="w-1/4"><label class="text-[9px] text-slate-500 uppercase">Start (m)</label><input type="number" step="0.1" value="${l.start}" onchange="app.updateLoad('${l.id}','start',this.value)"></div>
+                        <div class="w-1/4"><label class="text-[9px] text-slate-500 uppercase">End (m)</label><input type="number" step="0.1" value="${l.end}" onchange="app.updateLoad('${l.id}','end',this.value)"></div>
+                        </div>`;
+                    } else if (l.type === 'moment') {
+                        fields = `
+                        <div class="flex gap-2 mt-2">
+                        <div class="flex-1"><label class="text-[9px] text-slate-500 uppercase">Mag (kNm) &#8635;</label><input type="number" value="${l.mag}" onchange="app.updateLoad('${l.id}','mag',this.value)"></div>
+                        <div class="flex-1"><label class="text-[9px] text-slate-500 uppercase">Pos (m)</label><input type="number" step="0.1" value="${l.pos}" onchange="app.updateLoad('${l.id}','pos',this.value)"></div>
+                        </div>`;
+                    }
+
+                    const titleMap = {
+                        point: 'Point Load',
+                        udl: 'UDL',
+                        uvl: 'UVL',
+                        moment: 'Moment Load'
+                    };
+
+                    container.innerHTML += `
+                    <div class="bg-slate-50 p-2 border border-slate-200 rounded load-card ${l.type}">
+                    <div class="flex justify-between items-center mb-1">
+                    <span class="text-xs font-bold text-slate-700">${titleMap[l.type]}</span>
+                    <button onclick="app.removeLoad('${l.id}')" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-times"></i></button>
+                    </div>
+                    ${fields}
+                    </div>
+                    `;
+                });
+            },
+
+            switchTab(id) {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                event.currentTarget.classList.add('active');
+                document.getElementById(`tab-${id}`).classList.add('active');
+            },
+
+            update() {
+                const S = this.state.in;
+                S.L = parseFloat(document.getElementById('inp-l').value) || 1;
+                S.support = document.getElementById('inp-support').value;
+                S.b = parseFloat(document.getElementById('inp-b').value) || 10;
+                S.d = parseFloat(document.getElementById('inp-d').value) || 10;
+                S.E = parseFloat(document.getElementById('inp-e').value) || 1;
+
+                this.renderLoadUI();
+                this.calculateEngine();
+                this.updateUI();
+                this.renderBeamLayout();
+                this.renderCharts();
+                this.renderTables();
+                this.generateSteps();
+            },
+
+            // Universal Macaulay Bracket logic
+            macaulay(x,
+                a,
+                n) {
+                if (x <= a) return 0;
+                return Math.pow(x - a, n);
+            },
+
+            calculateEngine() {
+                const {
+                    L,
+                    support,
+                    b,
+                    d,
+                    E
+                } = this.state.in;
+                const loads = this.state.loads;
+                const o = {};
+
+                // Properties
+                const I_mm4 = (b * Math.pow(d, 3)) / 12;
+                document.getElementById('lbl-inertia').innerText = I_mm4.toExponential(2);
+                const I_m4 = I_mm4 * 1e-12;
+                const E_kPa = E * 1e6; // GPa to kN/m2
+                const EI = E_kPa * I_m4;
+                o.I_mm4 = I_mm4;
+                o.EI = EI;
+
+                // Function to get Load Integrals (V, M, EI*theta, EI*delta) at any x (Ignoring boundary constants)
+                const getLoadTerms = (x) => {
+                    let V = 0,
+                    M = 0,
+                    Th = 0,
+                    D = 0;
+
+                    loads.forEach(l => {
+                        if (l.type === 'point') {
+                            const P = l.mag,
+                            a = l.pos;
+                            V -= P * this.macaulay(x, a, 0);
+                            M -= P * this.macaulay(x, a, 1);
+                            Th -= (P/2) * this.macaulay(x, a, 2);
+                            D -= (P/6) * this.macaulay(x, a, 3);
+                        } else if (l.type === 'udl') {
+                            const w = l.mag,
+                            a = l.start,
+                            c = l.end;
+                            V += -w * this.macaulay(x, a, 1) + w * this.macaulay(x, c, 1);
+                            M += -(w/2) * this.macaulay(x, a, 2) + (w/2) * this.macaulay(x, c, 2);
+                            Th += -(w/6) * this.macaulay(x, a, 3) + (w/6) * this.macaulay(x, c, 3);
+                            D += -(w/24) * this.macaulay(x, a, 4) + (w/24) * this.macaulay(x, c, 4);
+                        } else if (l.type === 'uvl') {
+                            const w1 = l.mag1,
+                            w2 = l.mag2,
+                            a = l.start,
+                            c = l.end;
+                            if (c > a) {
+                                // 1. UDL part
+                                V += -w1 * this.macaulay(x, a, 1) + w1 * this.macaulay(x, c, 1);
+                                M += -(w1/2) * this.macaulay(x, a, 2) + (w1/2) * this.macaulay(x, c, 2);
+                                Th += -(w1/6) * this.macaulay(x, a, 3) + (w1/6) * this.macaulay(x, c, 3);
+                                D += -(w1/24) * this.macaulay(x, a, 4) + (w1/24) * this.macaulay(x, c, 4);
+
+                                // 2. Triangular part
+                                const k = (w2 - w1) / (c - a);
+                                V += -(k/2) * this.macaulay(x, a, 2) + (k/2) * this.macaulay(x, c, 2) + k*(c-a)*this.macaulay(x, c, 1);
+                                M += -(k/6) * this.macaulay(x, a, 3) + (k/6) * this.macaulay(x, c, 3) + (k*(c-a)/2)*this.macaulay(x, c, 2);
+                                Th += -(k/24) * this.macaulay(x, a, 4) + (k/24) * this.macaulay(x, c, 4) + (k*(c-a)/6)*this.macaulay(x, c, 3);
+                                D += -(k/120) * this.macaulay(x, a, 5) + (k/120) * this.macaulay(x, c, 5) + (k*(c-a)/24)*this.macaulay(x, c, 4);
+                            }
+                        } else if (l.type === 'moment') {
+                            const M0 = l.mag,
+                            a = l.pos; // Clockwise positive
+                            V += 0;
+                            M -= M0 * this.macaulay(x, a, 0);
+                            Th -= M0 * this.macaulay(x, a, 1);
+                            D -= (M0/2) * this.macaulay(x, a, 2);
+                        }
+                    });
+                    return {
+                        V, M, Th, D
+                    };
+                };
+
+                // Determine Boundary Constants (RA, MA, ThA, DA)
+                let RA = 0, MA = 0, ThA = 0, DA = 0, RB = 0, MB = 0;
+
+                const L_eval = getLoadTerms(L);
+
+                if (support === 'SS') {
+                    MA = 0; DA = 0; MB = 0;
+                    // M(L) = 0 => RA*L + M_loads(L) = 0
+                    RA = -L_eval.M / L;
+                    // Delta(L) = 0 => ThA*L + RA*L^3/6 + D_loads(L) = 0
+                    ThA = -(RA * Math.pow(L, 3)/6 + L_eval.D) / L;
+                    RB = - (RA + L_eval.V); // V(L) + RB = 0
+                } else if (support === 'Cantilever') {
+                    ThA = 0; DA = 0;
+                    // V(L) = 0 => RA + V_loads = 0
+                    RA = -L_eval.V;
+                    // M(L) = 0 => MA + RA*L + M_loads = 0
+                    MA = -(RA * L + L_eval.M);
+                    RB = 0; MB = 0;
+                } else if (support === 'Fixed') {
+                    ThA = 0; DA = 0;
+                    // Th(L) = 0 => MA*L + RA*L^2/2 + Th_loads = 0
+                    // D(L) = 0 => MA*L^2/2 + RA*L^3/6 + D_loads = 0
+                    const A = L,
+                    B = Math.pow(L, 2)/2,
+                    T = -L_eval.Th;
+                    const C = Math.pow(L, 2)/2,
+                    D = Math.pow(L, 3)/6,
+                    U = -L_eval.D;
+                    const det = A*D - B*C;
+                    MA = (T*D - U*B) / det;
+                    RA = (A*U - C*T) / det;
+
+                    RB = -(RA + L_eval.V);
+                    MB = MA + RA*L + L_eval.M; // Note: MB is internal moment at L. Reaction Wall Moment is -MB.
+                }
+
+                o.RA = RA; o.MA = MA; o.ThA = ThA; o.DA = DA;
+                o.RB = RB; o.MB = MB;
+
+                // Generate Nodes Data
+                const N = 500;
+                const dx = L / N;
+                let nodes = [];
+                let absVmax = 0,
+                absMmax = 0,
+                absDmax = 0;
+
+                for (let i = 0; i <= N; i++) {
+                    let x = i * dx;
+                    // Sample slightly off singularities for clean SFD steps
+                    let xs = x + 1e-8; if (i === N) xs = x - 1e-8;
+
+                    let terms = getLoadTerms(xs);
+
+                    let V = RA + terms.V;
+                    let M = MA + RA*xs + terms.M;
+                    let Th = ThA + MA*xs + RA*Math.pow(xs, 2)/2 + terms.Th;
+                    let D = DA + ThA*xs + MA*Math.pow(xs, 2)/2 + RA*Math.pow(xs, 3)/6 + terms.D;
+
+                    let defl_mm = (D / EI) * 1000; // m to mm
+
+                    // Force exact zeros at boundaries for clean rendering
+                    if (i === 0) {
+                        if (support === 'SS' || support === 'Fixed') defl_mm = 0;
+                        if (support === 'SS') M = 0;
+                        if (support === 'Fixed' || support === 'Cantilever') Th = 0;
+                    }
+                    if (i === N) {
+                        if (support === 'SS' || support === 'Fixed') defl_mm = 0;
+                        if (support === 'SS' || support === 'Cantilever') M = 0;
+                        if (support === 'Cantilever') V = 0;
+                        if (support === 'Fixed') Th = 0;
+                    }
+
+                    nodes.push({
+                        x, V, M, Th, defl: defl_mm
+                    });
+
+                    if (Math.abs(V) > absVmax) absVmax = Math.abs(V);
+                    if (Math.abs(M) > absMmax) absMmax = Math.abs(M);
+                    if (Math.abs(defl_mm) > absDmax) absDmax = Math.abs(defl_mm);
+                }
+
+                o.Vmax = absVmax;
+                o.Mmax = absMmax;
+                o.Dmax = absDmax;
+
+                // Design Checks
+                o.Dlimit = (L * 1000) / 250; // Span / 250 limit
+
+                // Max stress (sigma = M*y/I)
+                const y_max = (d/2); // mm
+                o.sigma_max = (absMmax * 1e6 * y_max) / I_mm4; // MPa
+                const fy = 250; // Assume structural steel fy=250 MPa, allowable ~ 0.66fy = 165
+                o.sigma_allow = 165;
+
+                o.isSafe = (o.Dmax <= o.Dlimit) && (o.sigma_max <= o.sigma_allow);
+
+                this.state.nodes = nodes;
+                this.state.out = o;
+            },
+
+            updateUI() {
+                const o = this.state.out;
+                document.getElementById('res-ra').innerText = o.RA.toFixed(1);
+                document.getElementById('res-rb').innerText = o.RB.toFixed(1);
+                document.getElementById('res-vmax').innerText = o.Vmax.toFixed(2);
+                document.getElementById('res-mmax').innerText = o.Mmax.toFixed(2);
+                document.getElementById('res-dmax').innerText = o.Dmax.toFixed(2);
+                document.getElementById('res-dlimit').innerText = o.Dlimit.toFixed(1);
+
+                const card = document.getElementById('status-card');
+                const text = document.getElementById('res-status');
+
+                if (o.isSafe) {
+                    card.className = "flex flex-col justify-center items-center rounded-lg bg-emerald-500 shadow-inner";
+                    text.innerHTML = '<i class="fa-solid fa-circle-check"></i> SAFE';
+                } else {
+                    card.className = "flex flex-col justify-center items-center rounded-lg bg-red-500 shadow-inner";
+                    text.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> UNSAFE';
+                }
+            },
+
+            renderBeamLayout() {
+                const container = document.getElementById('viz-beam');
+                container.innerHTML = '';
+                const W = container.clientWidth;
+                const H = container.clientHeight;
+
+                const svg = d3.select(container).append("svg").attr("width", W).attr("height", H);
+                const {
+                    L,
+                    support
+                } = this.state.in;
+
+                const marginX = 60;
+                const scaleX = d3.scaleLinear().domain([0, L]).range([marginX, W-marginX]);
+                const cy = H / 2;
+                const beamD = 14;
+
+                // Beam Body
+                svg.append("rect")
+                .attr("x", marginX).attr("y", cy - beamD/2)
+                .attr("width", W - 2*marginX).attr("height", beamD)
+                .attr("fill", "#cbd5e1").attr("stroke", "#475569").attr("stroke-width", 2);
+
+                // Supports
+                const drawPin = (x) => {
+                    svg.append("path").attr("d", `M ${x} ${cy+beamD/2} L ${x-8} ${cy+beamD/2+14} L ${x+8} ${cy+beamD/2+14} Z`).attr("fill", "#94a3b8");
+                };
+                const drawRoller = (x) => {
+                    drawPin(x);
+                    svg.append("circle").attr("cx", x-4).attr("cy", cy+beamD/2+17).attr("r", 3).attr("fill", "#94a3b8");
+                    svg.append("circle").attr("cx", x+4).attr("cy", cy+beamD/2+17).attr("r", 3).attr("fill", "#94a3b8");
+                };
+                const drawFixed = (x, isLeft) => {
+                    svg.append("rect").attr("x", isLeft ? x-12: x).attr("y", cy-20).attr("width", 12).attr("height", 40).attr("fill", "#64748b");
+                    for (let i = 0; i < 5; i++) {
+                        svg.append("line").attr("x1", isLeft?x-12: x+12).attr("y1", cy-15+i*8).attr("x2", isLeft?x-18: x+18).attr("y2", cy-10+i*8).attr("stroke", "#64748b").attr("stroke-width", 1);
+                    }
+                };
+
+                if (support === 'SS') {
+                    drawPin(marginX); drawRoller(W-marginX);
+                } else if (support === 'Cantilever') {
+                    drawFixed(marginX, true);
+                } else if (support === 'Fixed') {
+                    drawFixed(marginX, true); drawFixed(W-marginX, false);
+                }
+
+                // Markers
+                svg.append("defs").append("marker").attr("id", "arr-pt").attr("viewBox", "0 0 10 10").attr("refX", 5).attr("refY", 5).attr("markerWidth", 5).attr("markerHeight", 5).attr("orient", "auto-start-reverse").append("path").attr("d", "M 0 0 L 10 5 L 0 10 z").attr("fill", "#ef4444");
+                svg.append("defs").append("marker").attr("id", "arr-udl").attr("viewBox", "0 0 10 10").attr("refX", 5).attr("refY", 5).attr("markerWidth", 4).attr("markerHeight", 4).attr("orient", "auto-start-reverse").append("path").attr("d", "M 0 0 L 10 5 L 0 10 z").attr("fill", "#f59e0b");
+                svg.append("defs").append("marker").attr("id", "arr-mom").attr("viewBox", "0 0 10 10").attr("refX", 5).attr("refY", 5).attr("markerWidth", 4).attr("markerHeight", 4).attr("orient", "auto-start-reverse").append("path").attr("d", "M 0 0 L 10 5 L 0 10 z").attr("fill", "#0ea5e9");
+
+                // Draw Loads
+                this.state.loads.forEach(l => {
+                    if (l.type === 'point') {
+                        const x = scaleX(l.pos);
+                        svg.append("line").attr("x1", x).attr("y1", cy-35).attr("x2", x).attr("y2", cy-beamD/2-2).attr("stroke", "#ef4444").attr("stroke-width", 2).attr("marker-end", "url(#arr-pt)");
+                        svg.append("text").attr("x", x).attr("y", cy-40).attr("text-anchor", "middle").attr("fill", "#ef4444").attr("font-size", "10px").text(`${l.mag}kN`);
+                    } else if (l.type === 'udl') {
+                        const x1 = scaleX(l.start),
+                        x2 = scaleX(l.end);
+                        svg.append("rect").attr("x", x1).attr("y", cy-25).attr("width", x2-x1).attr("height", 25-beamD/2).attr("fill", "rgba(245, 158, 11, 0.2)");
+                        svg.append("line").attr("x1", x1).attr("y1", cy-25).attr("x2", x2).attr("y2", cy-25).attr("stroke", "#f59e0b").attr("stroke-width", 1);
+                        const nArr = Math.max(2, Math.floor((x2-x1)/15));
+                        for (let i = 0; i <= nArr; i++) {
+                            const ax = x1 + i*(x2-x1)/nArr;
+                            svg.append("line").attr("x1", ax).attr("y1", cy-25).attr("x2", ax).attr("y2", cy-beamD/2).attr("stroke", "#f59e0b").attr("stroke-width", 1).attr("marker-end", "url(#arr-udl)");
+                        }
+                        svg.append("text").attr("x", (x1+x2)/2).attr("y", cy-30).attr("text-anchor", "middle").attr("fill", "#d97706").attr("font-size", "10px").text(`${l.mag}kN/m`);
+                    } else if (l.type === 'uvl') {
+                        const x1 = scaleX(l.start),
+                        x2 = scaleX(l.end);
+                        const h1 = l.mag1 > 0 ? 25: 0;
+                        const h2 = l.mag2 > 0 ? 25: 0;
+                        const poly = [[x1,
+                            cy-beamD/2],
+                            [x1,
+                                cy-beamD/2-h1],
+                            [x2,
+                                cy-beamD/2-h2],
+                            [x2,
+                                cy-beamD/2]];
+                        svg.append("polygon").attr("points", poly.map(p=>p.join(',')).join(' ')).attr("fill", "rgba(139, 92, 246, 0.2)").attr("stroke", "#8b5cf6").attr("stroke-width", 1);
+                        svg.append("text").attr("x", (x1+x2)/2).attr("y", cy-30).attr("text-anchor", "middle").attr("fill", "#7c3aed").attr("font-size", "10px").text(`UVL`);
+                    } else if (l.type === 'moment') {
+                        const x = scaleX(l.pos);
+                        const arc = d3.path();
+                        arc.arc(x, cy, 15, Math.PI, 0);
+                        svg.append("path").attr("d", arc.toString()).attr("fill", "none").attr("stroke", "#0ea5e9").attr("stroke-width", 2).attr("marker-end", "url(#arr-mom)");
+                        svg.append("text").attr("x", x).attr("y", cy-20).attr("text-anchor", "middle").attr("fill", "#0ea5e9").attr("font-size", "10px").text(`${l.mag}kNm`);
+                    }
+                });
+            },
+
+            renderCharts() {
+                const labels = this.state.nodes.map(n => n.x.toFixed(2));
+                const vData = this.state.nodes.map(n => n.V);
+                const mData = this.state.nodes.map(n => n.M);
+                const dData = this.state.nodes.map(n => n.defl);
+
+                const getOpts = (title,
+                    unit,
+                    revY = false) => ({
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            title: {
+                                display: true,
+                                text: `${title} [${unit}]`,
+                                font: {
+                                    size: 14
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                ticks: {
+                                    maxTicksLimit: 10
+                                },
+                                grid: {
+                                    display: false
+                                }
+                            },
+                            y: {
+                                reverse: revY,
+                                grid: {
+                                    color: '#e2e8f0'
+                                }
+                            }
+                        },
+                        elements: {
+                            point: {
+                                radius: 0
+                            }
+                        }
+                    });
+
+                if (this.state.charts.sfd) this.state.charts.sfd.destroy();
+                this.state.charts.sfd = new Chart(document.getElementById('chart-sfd'), {
+                    type: 'line',
+                    data: {
+                        labels, datasets: [{
+                            data: vData, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.15)', fill: true, tension: 0, stepped: 'before', borderWidth: 1.5
+                        }]
+                    },
+                    options: getOpts('Shear Force Diagram', 'kN')
+                });
+
+                if (this.state.charts.bmd) this.state.charts.bmd.destroy();
+                this.state.charts.bmd = new Chart(document.getElementById('chart-bmd'), {
+                    type: 'line',
+                    data: {
+                        labels, datasets: [{
+                            data: mData, borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.15)', fill: true, tension: 0.2, borderWidth: 1.5
+                        }]
+                    },
+                    options: getOpts('Bending Moment Diagram', 'kNm')
+                });
+
+                if (this.state.charts.def) this.state.charts.def.destroy();
+                this.state.charts.def = new Chart(document.getElementById('chart-def'), {
+                    type: 'line',
+                    data: {
+                        labels, datasets: [{
+                            data: dData, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.15)', fill: true, tension: 0.2, borderWidth: 1.5
+                        }]
+                    },
+                    options: getOpts('Deflection Curve', 'mm', true) // positive def down
+                });
+            },
+
+            renderTables() {
+                let html = '';
+                // Sample ~25 points for table readability
+                const step = Math.max(1, Math.floor(this.state.nodes.length / 25));
+                for (let i = 0; i < this.state.nodes.length; i += step) {
+                    const n = this.state.nodes[i];
+                    html += `<tr><td>${n.x.toFixed(2)}</td><td>${n.V.toFixed(2)}</td><td>${n.M.toFixed(2)}</td><td>${n.Th.toExponential(2)}</td><td>${n.defl.toFixed(3)}</td></tr>`;
+                }
+                const n = this.state.nodes[this.state.nodes.length-1];
+                html += `<tr><td>${n.x.toFixed(2)}</td><td>${n.V.toFixed(2)}</td><td>${n.M.toFixed(2)}</td><td>${n.Th.toExponential(2)}</td><td>${n.defl.toFixed(3)}</td></tr>`;
+                document.querySelector('#data-table tbody').innerHTML = html;
+            },
+
+            generateSteps() {
+                const {
+                    L,
+                    support,
+                    b,
+                    d,
+                    E
+                } = this.state.in;
+                const o = this.state.out;
+
+                let loadStr = this.state.loads.length === 0 ? "None": this.state.loads.map(l => {
+                    if (l.type === 'point') return `Point Load: ${l.mag} kN @ ${l.pos}m`;
+                    if (l.type === 'udl') return `UDL: ${l.mag} kN/m from ${l.start}m to ${l.end}m`;
+                    if (l.type === 'uvl') return `UVL: ${l.mag1} to ${l.mag2} kN/m from ${l.start}m to ${l.end}m`;
+                    if (l.type === 'moment') return `Moment: ${l.mag} kNm @ ${l.pos}m`;
+                }).join('<br>&nbsp;&nbsp;&nbsp;&nbsp;');
+
+                let html = `
+                <div class="step-title">Step 1: Input Summary & Conventions</div>
+                <ul class="list-disc pl-5 mb-2 text-slate-600">
+                <li>Span Length L = ${L} m</li>
+                <li>Support Condition: ${support}</li>
+                <li>Loads:<br>&nbsp;&nbsp;&nbsp;&nbsp;${loadStr}</li>
+                <li>Section: b = ${b} mm, d = ${d} mm, E = ${E} GPa</li>
+                </ul>
+                <p class="italic text-xs text-slate-500">Sign Convention: Upward force positive, Sagging moment positive, Downward deflection positive.</p>
+
+                <div class="step-title">Step 2: Section Properties</div>
+                <div class="math-block">
+                I = (b &times; d&sup3;) / 12 = (${b} &times; ${d}&sup3;) / 12 = ${(o.I_mm4).toExponential(3)} mm&#x2074; = ${(o.I_mm4*1e-12).toExponential(3)} m&#x2074;<br>
+                EI = E &times; I = (${E}&times;10&hsp;&sup6; kN/m&sup2;) &times; (${(o.I_mm4*1e-12).toExponential(3)} m&#x2074;) = ${(o.EI).toExponential(3)} kN&middot;m&sup2;
+                </div>
+
+                <div class="step-title">Step 3: Boundary Conditions & Support Reactions</div>
+                <p>Using Macaulay's Method and analytical integration for exact boundary value solution:</p>
+                <div class="math-block text-sm">
+                <b>Constants Evaluated:</b><br>
+                R<sub>A</sub> = ${o.RA.toFixed(3)} kN &nbsp;&nbsp;|&nbsp;&nbsp; M<sub>A</sub> = ${o.MA.toFixed(3)} kNm<br>
+                EI&middot;&theta;<sub>A</sub> = ${(o.ThA*o.EI).toFixed(3)} kN&middot;m&sup2; &nbsp;&nbsp;|&nbsp;&nbsp; EI&middot;&Delta;<sub>A</sub> = ${(o.DA*o.EI).toFixed(3)} kN&middot;m&sup3;<br><br>
+                <b>End Support:</b><br>
+                R<sub>B</sub> = ${o.RB.toFixed(3)} kN &nbsp;&nbsp;|&nbsp;&nbsp; M<sub>B</sub> = ${o.MB.toFixed(3)} kNm
+                </div>
+
+                <div class="step-title">Step 4: Governing Analytical Equations (Macaulay's Method)</div>
+                <p>The general equations for any point <i>x</i> along the beam:</p>
+                <div class="math-block" style="font-size: 0.95rem;">
+                V(x) = R<sub>A</sub> + &Sigma; V<sub>loads</sub>(x)<br>
+                M(x) = M<sub>A</sub> + R<sub>A</sub>&middot;x + &Sigma; M<sub>loads</sub>(x)<br>
+                EI&middot;&theta;(x) = EI&middot;&theta;<sub>A</sub> + M<sub>A</sub>&middot;x + R<sub>A</sub>&middot;x&sup2;/2 + &Sigma; &theta;<sub>loads</sub>(x)<br>
+                EI&middot;&Delta;(x) = EI&middot;&Delta;<sub>A</sub> + EI&middot;&theta;<sub>A</sub>&middot;x + M<sub>A</sub>&middot;x&sup2;/2 + R<sub>A</sub>&middot;x&sup3;/6 + &Sigma; &Delta;<sub>loads</sub>(x)
+                </div>
+
+                <div class="step-title">Step 5: Analysis Extrema & Design Checks</div>
+                <div class="math-block">
+                <b>Maximums:</b><br>
+                |V<sub>max</sub>| = ${o.Vmax.toFixed(2)} kN<br>
+                |M<sub>max</sub>| = ${o.Mmax.toFixed(2)} kNm<br>
+                |&Delta;<sub>max</sub>| = ${o.Dmax.toFixed(2)} mm<br><br>
+                <b>Allowable Limits:</b><br>
+                &Delta;<sub>limit</sub> (Span/250) = ${o.Dlimit.toFixed(2)} mm<br>
+                &sigma;<sub>max</sub> = (M<sub>max</sub> &middot; y) / I = ${o.sigma_max.toFixed(2)} MPa &le; &sigma;<sub>allowable</sub> (${o.sigma_allow} MPa)
+                </div>
+                `;
+
+                if (o.isSafe) {
+                    html += `<div class="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded mt-4"><strong><i class="fa-solid fa-check"></i> Design is SAFE.</strong> All limits satisfied.</div>`;
+                } else {
+                    html += `<div class="bg-red-50 border border-red-200 text-red-800 p-4 rounded mt-4"><strong><i class="fa-solid fa-xmark"></i> Design is UNSAFE.</strong> Deflection or Stress limits exceeded. Increase beam depth or material strength.</div>`;
+                }
+
+                document.getElementById('calc-steps').innerHTML = html;
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            app.init();
+        });
+    </script>
+</body>
+</html>
